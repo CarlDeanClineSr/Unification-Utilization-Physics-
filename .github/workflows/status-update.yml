@@ -1,0 +1,50 @@
+name: Append JWST status entry
+on:
+  workflow_dispatch:
+    inputs:
+      date_utc:
+        description: "UTC timestamp (YYYY-MM-DDTHH:MM:SSZ)"
+        required: true
+      obsid:
+        description: "Observation ID"
+        required: true
+      instrument:
+        description: "Instrument (e.g., NIRSpec, MIRI)"
+        required: true
+      mode:
+        description: "Mode (e.g., G395H/F290LP, MRS Ch1-Short)"
+        required: true
+      state:
+        description: "Scheduled/Executing/Complete"
+        required: true
+      t_exp:
+        description: "Total exposure time (e.g., 8.17 ks)"
+        required: false
+        default: "(TBD)"
+      dithers:
+        description: "Dither pattern/points"
+        required: false
+        default: "(TBD)"
+      notes:
+        description: "Short note/anomaly"
+        required: false
+        default: ""
+jobs:
+  append:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Append line to live_status_8714.md
+        shell: bash
+        run: |
+          line="- ${{ inputs.date_utc }} | ${{ inputs.obsid }} | ${{ inputs.instrument }} | ${{ inputs.mode }} | ${{ inputs.state }} | ${{ inputs.t_exp }} | ${{ inputs.dithers }} | ${{ inputs.notes }}"
+          printf "\n%s\n" "$line" >> live_status_8714.md
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add live_status_8714.md
+          git commit -m "Status: append entry for ${{ inputs.obsid }} (${{ inputs.state }})"
+          git push
