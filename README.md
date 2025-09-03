@@ -32,12 +32,18 @@ Structure
 - caveats_and_solutions.md — Practical pitfalls and fixes
 - research_log/2025-09-03.md — Initial status and to-dos
 - profile_dr_cline.md — Field-experience context (systems mindset)
+- data_management_guidelines.md — Best practices for JWST and GW data handling
+- CONTRIBUTING.md — Guidelines for scientific collaboration and contributions
+- GETTING_STARTED.md — Detailed setup and orientation guide
 - .github/workflows/status-update.yml — One-click action to append lines to live_status_8714.md
+- .github/ISSUE_TEMPLATE/ — Templates for scientific discussions, JWST updates, and bug reports
+- .github/pull_request_template.md — Standardized PR structure for contributions
 
 Quickstart
 - Status updates: GitHub → Actions → “Append JWST status entry” → fill inputs → Run
 - Retrievals: start with jwst_retrieval_snippets.md and retrieval_targets_8714.md; verify line lists (ExoMol/HITEMP/HITRAN)
 - GR tests: use gravity_math_snippets.md + gravity_tests_plan.md; run IMR splits and ringdown on the O4a anchors
+- **New contributors**: Start with GETTING_STARTED.md for detailed orientation and CONTRIBUTING.md for collaboration guidelines
 
 License
 - MIT (see LICENSE)
