@@ -1,0 +1,219 @@
+name: Ingest files from Google Drive
+
+on:
+  workflow_dispatch:
+    inputs:
+      gdrive_url:
+        description: "Google Drive shareable link"
+        required: true
+      file_type:
+        description: "File type (data/evidence/analysis)"
+        required: true
+        default: "data"
+        type: choice
+        options:
+          - data
+          - evidence
+          - analysis
+          - documentation
+      target_directory:
+        description: "Target directory in repo"
+        required: false
+        default: "data/"
+      description:
+        description: "Brief description of the files"
+        required: false
+        default: ""
+      auto_process:
+        description: "Auto-process known file types"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install gdown pandas numpy requests
+      
+      - name: Create target directory
+        run: |
+          mkdir -p "${{ inputs.target_directory }}"
+      
+      - name: Extract Google Drive file ID
+        id: extract_id
+        run: |
+          url="${{ inputs.gdrive_url }}"
+          # Extract file ID from various Google Drive URL formats
+          if [[ $url == *"/file/d/"* ]]; then
+            file_id=$(echo $url | sed -n 's/.*\/file\/d\/\([a-zA-Z0-9_-]*\).*/\1/p')
+          elif [[ $url == *"id="* ]]; then
+            file_id=$(echo $url | sed -n 's/.*id=\([a-zA-Z0-9_-]*\).*/\1/p')
+          else
+            echo "Unsupported Google Drive URL format"
+            exit 1
+          fi
+          echo "file_id=$file_id" >> $GITHUB_OUTPUT
+          echo "Extracted file ID: $file_id"
+      
+      - name: Download file from Google Drive
+        run: |
+          cd "${{ inputs.target_directory }}"
+          gdown "https://drive.google.com/uc?id=${{ steps.extract_id.outputs.file_id }}"
+          ls -la
+      
+      - name: Auto-process files (if enabled)
+        if: ${{ inputs.auto_process }}
+        run: |
+          cd "${{ inputs.target_directory }}"
+          python3 << 'EOF'
+          import os
+          import pandas as pd
+          import json
+          from pathlib import Path
+          
+          file_type = "${{ inputs.file_type }}"
+          
+          # List downloaded files
+          files = [f for f in os.listdir('.') if os.path.isfile(f)]
+          print(f"Downloaded files: {files}")
+          
+          for filename in files:
+              ext = Path(filename).suffix.lower()
+              
+              # Process based on file type and extension
+              if file_type == "evidence" and ext in ['.csv', '.json']:
+                  print(f"Processing evidence file: {filename}")
+                  
+                  if ext == '.csv':
+                      try:
+                          df = pd.read_csv(filename)
+                          print(f"CSV file contains {len(df)} rows and {len(df.columns)} columns")
+                          print(f"Columns: {list(df.columns)}")
+                          
+                          # Check if it looks like SMBH candidate data
+                          expected_cols = ['name', 'redshift', 'mass', 'survey']
+                          if any(col in df.columns for col in expected_cols):
+                              print("Detected potential SMBH candidate data")
+                              
+                              # Create a simple validation report
+                              with open(f"{filename}_validation.json", 'w') as f:
+                                  validation = {
+                                      "file": filename,
+                                      "type": "smbh_candidates",
+                                      "rows": len(df),
+                                      "columns": list(df.columns),
+                                      "processing_date": pd.Timestamp.now().isoformat(),
+                                      "validated": True
+                                  }
+                                  json.dump(validation, f, indent=2)
+                      except Exception as e:
+                          print(f"Error processing {filename}: {e}")
+                  
+                  elif ext == '.json':
+                      try:
+                          with open(filename, 'r') as f:
+                              data = json.load(f)
+                          print(f"JSON file contains {len(data)} top-level items")
+                          
+                          # Create validation report
+                          with open(f"{filename}_validation.json", 'w') as f:
+                              validation = {
+                                  "file": filename,
+                                  "type": "json_data",
+                                  "items": len(data) if isinstance(data, (dict, list)) else 1,
+                                  "processing_date": pd.Timestamp.now().isoformat(),
+                                  "validated": True
+                              }
+                              json.dump(validation, f, indent=2)
+                      except Exception as e:
+                          print(f"Error processing {filename}: {e}")
+              
+              elif file_type == "data":
+                  print(f"Data file detected: {filename}")
+                  # Add basic file info
+                  file_info = {
+                      "filename": filename,
+                      "size_bytes": os.path.getsize(filename),
+                      "type": "data",
+                      "ingested_date": pd.Timestamp.now().isoformat()
+                  }
+                  
+                  with open(f"{filename}_info.json", 'w') as f:
+                      json.dump(file_info, f, indent=2)
+          EOF
+      
+      - name: Create ingestion log
+        run: |
+          cd "${{ inputs.target_directory }}"
+          cat > ingestion_log.md << EOF
+          # Google Drive Ingestion Log
+          
+          **Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Source**: ${{ inputs.gdrive_url }}
+          **File Type**: ${{ inputs.file_type }}
+          **Description**: ${{ inputs.description }}
+          **Auto-processed**: ${{ inputs.auto_process }}
+          
+          ## Files Downloaded
+          $(ls -la | grep -v '^d' | awk '{print "- " $9 " (" $5 " bytes)"}')
+          
+          ## Processing Notes
+          - Files downloaded to: ${{ inputs.target_directory }}
+          - GitHub Action run: ${{ github.run_id }}
+          - Triggered by: ${{ github.actor }}
+          
+          EOF
+      
+      - name: Update main ingestion index
+        run: |
+          # Create or update main index file
+          if [ ! -f "gdrive_ingestions.md" ]; then
+            cat > gdrive_ingestions.md << 'EOF'
+          # Google Drive Ingestion Index
+          
+          This file tracks all Google Drive file ingestions into the repository.
+          
+          ## Ingestion History
+          
+          EOF
+          fi
+          
+          # Append new entry
+          echo "- **$(date -u +"%Y-%m-%d %H:%M:%S")** - ${{ inputs.file_type }} files to \`${{ inputs.target_directory }}\` - [Run ${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> gdrive_ingestions.md
+          if [ -n "${{ inputs.description }}" ]; then
+            echo "  - Description: ${{ inputs.description }}" >> gdrive_ingestions.md
+          fi
+          echo "" >> gdrive_ingestions.md
+      
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "GDrive ingest: ${{ inputs.file_type }} files to ${{ inputs.target_directory }}
+
+          Source: ${{ inputs.gdrive_url }}
+          Description: ${{ inputs.description }}
+          Auto-processed: ${{ inputs.auto_process }}"
+          git push
+      
+      - name: Summary
+        run: |
+          echo "✅ Google Drive ingestion completed successfully!"
+          echo "📁 Files downloaded to: ${{ inputs.target_directory }}"
+          echo "📋 Ingestion log created"
+          echo "🔄 Changes committed and pushed to repository"
