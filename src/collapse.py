@@ -51,6 +51,11 @@ def deltaU_from_gamma(gamma):
         raise ValueError("gamma must be in range (0, 1)")
     return gamma
 
+# WKB exponent prefactor for Josephson junctions
+# This is a characteristic value for the action in units of ℏ
+# For real junctions: S/ℏ ~ 7.2 * sqrt(E_J/E_C) * (ΔU/E_J)^(3/2)
+WKB_PREFACTOR = 7.2
+
 def wkb_exponent(E_J, gamma):
     """Compute WKB exponent for macroscopic quantum tunneling.
        E_J: Josephson energy (in Joules)
@@ -59,9 +64,9 @@ def wkb_exponent(E_J, gamma):
     """
     delta_U = deltaU_from_gamma(gamma) * E_J
     # Simplified WKB: S/ħ ~ (delta_U / E_J)^(3/2) * characteristic_factor
-    # For Josephson junctions: S/ħ ~ 7.2 * sqrt(E_J/E_c) * (delta_U / E_J)^(3/2)
+    # For Josephson junctions: S/ħ ~ WKB_PREFACTOR * sqrt(E_J/E_c) * (delta_U / E_J)^(3/2)
     # Approximation for demo purposes
-    return 7.2 * (gamma)**(3/2)
+    return WKB_PREFACTOR * (gamma)**(3/2)
 
 def gamma_quantum(E_J, C, gamma):
     """Compute quantum tunneling rate Γ_MQT.
